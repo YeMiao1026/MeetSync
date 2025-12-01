@@ -16,6 +16,7 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentRoom, setCurrentRoom] = useState<Room | null>(null);
   const [userRooms, setUserRooms] = useState<Room[]>([]);
+  const [loading, setLoading] = useState(false);
   
   // Inputs
   const [roomIdInput, setRoomIdInput] = useState('');
@@ -23,27 +24,38 @@ const App: React.FC = () => {
   const [startDate, setStartDate] = useState(formatDate(new Date()));
   const [endDate, setEndDate] = useState(formatDate(new Date(new Date().setDate(new Date().getDate() + 5))));
 
-  // Polling to simulate real-time updates for Room View
+  // Real-time listener for Room View
   useEffect(() => {
-    if (view === 'ROOM' && currentRoom) {
-      const interval = setInterval(() => {
-        const updatedRoom = storage.getRoom(currentRoom.id);
-        if (updatedRoom) {
-          if (JSON.stringify(updatedRoom) !== JSON.stringify(currentRoom)) {
-            setCurrentRoom(updatedRoom);
-          }
-        }
-      }, 2000);
-      return () => clearInterval(interval);
+    let unsubscribe: () => void;
+
+    if (view === 'ROOM' && currentRoom?.id) {
+      unsubscribe = storage.subscribeToRoom(currentRoom.id, (updatedRoom) => {
+        // Only update if data actually changed to prevent loops (though Firestore handles this well)
+        setCurrentRoom(updatedRoom);
+      });
     }
-  }, [view, currentRoom]);
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [view, currentRoom?.id]);
 
   // Load user rooms when entering Dashboard
   useEffect(() => {
-    if (view === 'DASHBOARD' && currentUserName) {
-      const rooms = storage.getRoomsForUser(currentUserName);
-      setUserRooms(rooms);
-    }
+    const fetchRooms = async () => {
+      if (view === 'DASHBOARD' && currentUserName) {
+        setLoading(true);
+        try {
+          const rooms = await storage.getRoomsForUser(currentUserName);
+          setUserRooms(rooms);
+        } catch (error) {
+          console.error("Failed to fetch rooms", error);
+        } finally {
+          setLoading(false);
+        }
+      }
+    };
+    fetchRooms();
   }, [view, currentUserName]);
 
   const handleLogin = (name: string) => {
@@ -55,7 +67,7 @@ const App: React.FC = () => {
     setView('DASHBOARD');
   };
 
-  const handleCreateRoom = () => {
+  const handleCreateRoom = async () => {
     if (!roomName.trim() || !startDate || !endDate) {
       alert("請填寫所有欄位");
       return;
@@ -65,41 +77,55 @@ const App: React.FC = () => {
       return;
     }
 
-    // Pass the name, let storage handle user creation
-    const { room, user } = storage.createRoom(roomName, startDate, endDate, currentUserName);
-    
-    setCurrentUser(user);
-    setCurrentRoom(room);
-    setView('ROOM');
+    setLoading(true);
+    try {
+      // Pass the name, let storage handle user creation
+      const { room, user } = await storage.createRoom(roomName, startDate, endDate, currentUserName);
+      
+      setCurrentUser(user);
+      setCurrentRoom(room);
+      setView('ROOM');
+    } catch (error) {
+      console.error(error);
+      alert("建立空間失敗");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleJoinRoom = () => {
+  const handleJoinRoom = async () => {
     if (!roomIdInput.trim()) {
       alert("請輸入空間 ID");
       return;
     }
+    setLoading(true);
     try {
-      const { room, user } = storage.joinRoom(roomIdInput.trim(), currentUserName);
+      const { room, user } = await storage.joinRoom(roomIdInput.trim(), currentUserName);
       setCurrentUser(user);
       setCurrentRoom(room);
       setView('ROOM');
     } catch (e) {
       alert("找不到此空間 ID，請確認後再試");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleEnterExistingRoom = (roomId: string) => {
+  const handleEnterExistingRoom = async (roomId: string) => {
+    setLoading(true);
     try {
-      const { room, user } = storage.joinRoom(roomId, currentUserName);
+      const { room, user } = await storage.joinRoom(roomId, currentUserName);
       setCurrentUser(user);
       setCurrentRoom(room);
       setView('ROOM');
     } catch (e) {
       alert("進入空間發生錯誤");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleToggleSlot = useCallback((slotId: TimeSlot) => {
+  const handleToggleSlot = useCallback(async (slotId: TimeSlot) => {
     if (!currentRoom || !currentUser) return;
 
     const mySlots = currentRoom.schedules[currentUser.id] || [];
@@ -110,7 +136,7 @@ const App: React.FC = () => {
       newSlots = [...mySlots, slotId];
     }
 
-    // Optimistic UI update
+    // Optimistic UI update (optional, but good for UX)
     const updatedRoom = {
       ...currentRoom,
       schedules: {
@@ -120,8 +146,13 @@ const App: React.FC = () => {
     };
     setCurrentRoom(updatedRoom);
 
-    // Persist
-    storage.updateSchedule(currentRoom.id, currentUser.id, newSlots);
+    // Persist to Firebase
+    try {
+      await storage.updateSchedule(currentRoom.id, currentUser.id, newSlots);
+    } catch (error) {
+      console.error("Failed to update schedule", error);
+      // Revert logic could go here
+    }
   }, [currentRoom, currentUser]);
 
   const handleCopyLink = () => {
@@ -206,11 +237,12 @@ const App: React.FC = () => {
             {/* Room List */}
             <div className="col-span-1 md:col-span-2">
               <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden min-h-[400px]">
-                <div className="p-4 border-b border-slate-100 bg-slate-50/50">
+                <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
                   <h3 className="font-bold text-slate-700">我的空間 ({userRooms.length})</h3>
+                  {loading && <span className="text-xs text-indigo-500">載入中...</span>}
                 </div>
                 
-                {userRooms.length === 0 ? (
+                {!loading && userRooms.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-64 text-slate-400">
                     <svg className="w-12 h-12 mb-3 opacity-20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
@@ -288,8 +320,8 @@ const App: React.FC = () => {
             </div>
             
             <div className="pt-4">
-              <Button fullWidth onClick={handleCreateRoom}>
-                開始排程
+              <Button fullWidth onClick={handleCreateRoom} disabled={loading}>
+                {loading ? '建立中...' : '開始排程'}
               </Button>
             </div>
           </div>
@@ -316,8 +348,8 @@ const App: React.FC = () => {
             />
             
             <div className="pt-4">
-              <Button fullWidth variant="secondary" onClick={handleJoinRoom}>
-                進入空間
+              <Button fullWidth variant="secondary" onClick={handleJoinRoom} disabled={loading}>
+                {loading ? '加入中...' : '進入空間'}
               </Button>
             </div>
           </div>
