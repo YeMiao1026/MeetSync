@@ -1,16 +1,17 @@
-import { initializeApp } from "firebase/app";
+import * as firebaseApp from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 
 // Your web app's Firebase configuration
+// Using environment variables for security and Vercel deployment compatibility
 const firebaseConfig = {
-  apiKey: "AIzaSyC8wpOSiloVr_bUATzbWjNCAfdh4wuJhxE",
-  authDomain: "meetsync-951dc.firebaseapp.com",
-  projectId: "meetsync-951dc",
-  storageBucket: "meetsync-951dc.firebasestorage.app",
-  messagingSenderId: "708285854650",
-  appId: "1:708285854650:web:66b0b7c7161b1ad265e383"
+  apiKey: (import.meta as any).env.VITE_FIREBASE_API_KEY,
+  authDomain: (import.meta as any).env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: (import.meta as any).env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: (import.meta as any).env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: (import.meta as any).env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: (import.meta as any).env.VITE_FIREBASE_APP_ID
 };
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
+const app = firebaseApp.initializeApp(firebaseConfig);
 export const db = getFirestore(app);
