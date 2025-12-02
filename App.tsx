@@ -6,6 +6,24 @@ import Button from './components/Button';
 import Input from './components/Input';
 import TimeGrid from './components/TimeGrid';
 
+// Timeout helper to prevent infinite loading
+const withTimeout = <T,>(promise: Promise<T>, ms: number = 15000, errorMessage: string = "連線逾時"): Promise<T> => {
+  let timeoutId: any;
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(errorMessage));
+    }, ms);
+  });
+
+  return Promise.race([
+    promise.then((res) => {
+      clearTimeout(timeoutId);
+      return res;
+    }),
+    timeoutPromise
+  ]);
+};
+
 const App: React.FC = () => {
   const [view, setView] = useState<ViewState>('LANDING');
   
@@ -46,10 +64,16 @@ const App: React.FC = () => {
       if (view === 'DASHBOARD' && currentUserName) {
         setLoading(true);
         try {
-          const rooms = await storage.getRoomsForUser(currentUserName);
+          // Allow 10s for fetching list
+          const rooms = await withTimeout(
+            storage.getRoomsForUser(currentUserName), 
+            10000, 
+            "讀取列表逾時，請檢查網路或 Firebase 規則"
+          );
           setUserRooms(rooms);
         } catch (error) {
           console.error("Failed to fetch rooms", error);
+          // Don't alert here to avoid annoying popups on load
         } finally {
           setLoading(false);
         }
@@ -80,14 +104,19 @@ const App: React.FC = () => {
     setLoading(true);
     try {
       // Pass the name, let storage handle user creation
-      const { room, user } = await storage.createRoom(roomName, startDate, endDate, currentUserName);
+      // Wrap in timeout
+      const { room, user } = await withTimeout(
+        storage.createRoom(roomName, startDate, endDate, currentUserName),
+        15000,
+        "建立空間回應逾時。請檢查 Firebase Console 的「規則」是否已設為 true，或是關閉廣告阻擋器。"
+      );
       
       setCurrentUser(user);
       setCurrentRoom(room);
       setView('ROOM');
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      alert("建立空間失敗");
+      alert(`建立空間失敗: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -100,12 +129,16 @@ const App: React.FC = () => {
     }
     setLoading(true);
     try {
-      const { room, user } = await storage.joinRoom(roomIdInput.trim(), currentUserName);
+      const { room, user } = await withTimeout(
+        storage.joinRoom(roomIdInput.trim(), currentUserName),
+        15000,
+        "加入空間逾時，請檢查網路連線。"
+      );
       setCurrentUser(user);
       setCurrentRoom(room);
       setView('ROOM');
-    } catch (e) {
-      alert("找不到此空間 ID，請確認後再試");
+    } catch (e: any) {
+      alert(`錯誤: ${e.message || "找不到此空間 ID，請確認後再試"}`);
     } finally {
       setLoading(false);
     }
@@ -114,12 +147,16 @@ const App: React.FC = () => {
   const handleEnterExistingRoom = async (roomId: string) => {
     setLoading(true);
     try {
-      const { room, user } = await storage.joinRoom(roomId, currentUserName);
+      const { room, user } = await withTimeout(
+        storage.joinRoom(roomId, currentUserName),
+        15000,
+        "進入空間逾時"
+      );
       setCurrentUser(user);
       setCurrentRoom(room);
       setView('ROOM');
-    } catch (e) {
-      alert("進入空間發生錯誤");
+    } catch (e: any) {
+      alert(`進入空間發生錯誤: ${e.message}`);
     } finally {
       setLoading(false);
     }
