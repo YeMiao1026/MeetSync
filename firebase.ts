@@ -1,20 +1,20 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
+import { getAnalytics } from "firebase/analytics";
 
-// TODO: 請將此處替換為您的 Firebase Console > Project Settings > General 下方的 Config
-// 如果您使用 GitHub 部署，建議使用環境變數 import.meta.env.VITE_FIREBASE_API_KEY 等
-
-const env = (import.meta as any).env || {};
-
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-  apiKey: env.VITE_FIREBASE_API_KEY || "AIzaSyD-YOUR-API-KEY-HERE",
-  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN || "your-project.firebaseapp.com",
-  projectId: env.VITE_FIREBASE_PROJECT_ID || "your-project-id",
-  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || "your-project.appspot.com",
-  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID || "123456789",
-  appId: env.VITE_FIREBASE_APP_ID || "1:123456789:web:abcdef"
+  apiKey: "AIzaSyC8wpOSiloVr_bUATzbWjNCAfdh4wuJhxE",
+  authDomain: "meetsync-951dc.firebaseapp.com",
+  projectId: "meetsync-951dc",
+  storageBucket: "meetsync-951dc.firebasestorage.app",
+  messagingSenderId: "708285854650",
+  appId: "1:708285854650:web:66b0b7c7161b1ad265e383",
+  measurementId: "G-2RJ4HS4S32"
 };
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
 export const db = getFirestore(app);
